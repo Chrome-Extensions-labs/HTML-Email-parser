@@ -247,7 +247,7 @@ The repository does not currently include a CI workflow. If you introduce one, a
 3. Wait for the scan to complete.
 4. Review the discovered emails in the popup.
 5. Click `Copy` to copy an address or `Mail` to open a `mailto:` link.
-6. Click `Обновити` if you want to force a fresh scan.
+6. Click `Refresh` if you want to force a fresh scan.
 
 ### What the Popup Does Internally
 
@@ -356,12 +356,12 @@ The current implementation attempts these paths when additional discovery is nee
 
 ### UI Strings
 
-The popup currently includes a Ukrainian refresh label and helper tip:
+The popup uses the following English refresh label and helper tip:
 
-- Button label: `Обновити`
-- Footer hint: `Tip: Якщо пошта одразу не знайшлась, натисніть "Обновити"`
+- Button label: `Refresh`
+- Footer hint: `Tip: If an email is not found right away, click "Refresh"`
 
-If you want a fully English UX, update the static strings in `popup.html` and any corresponding text logic in `popup.js`.
+If you need to customize wording, update the static strings in `popup.html` and any corresponding text logic in `popup.js`.
 
 ## License
 
