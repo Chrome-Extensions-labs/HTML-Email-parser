@@ -13,13 +13,16 @@
 
     <div id="list"></div>
 
-    <div id="actions" style="margin-top:10px;">
-      <button id="refreshBtn">Обновити</button>
+    <div id="actions">
+      <button id="refreshBtn" type="button">Refresh</button>
     </div>
 
-    <div id="footer">Tip: Якщо пошта одразу не знайшлась, натисніть "Обновити"</div>
+    <div id="footer">Tip: If no emails appear, refresh and retry.</div>
   </div>
 
+  <script src="shared/email-utils.js"></script>
+  <script src="popup/render.js"></script>
+  <script src="popup/state.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

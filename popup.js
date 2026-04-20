@@ -1,159 +1,115 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  const listEl = document.getElementById("list");
-  const metaEl = document.getElementById("meta");
-  const titleEl = document.getElementById("pageTitle");
-  const refreshBtn = document.getElementById("refreshBtn");
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tabId = tab?.id;
+  const listElement = document.getElementById("list");
+  const metaElement = document.getElementById("meta");
+  const titleElement = document.getElementById("pageTitle");
+  const refreshButton = document.getElementById("refreshBtn");
 
-  titleEl.textContent = tab?.title || "Email Finder";
-  metaEl.textContent = tab?.url || "No tab";
+  const state = globalThis.PopupState.createState();
 
-  function priorityScore(emailLower) {
-    if (!emailLower) return 3;
-    if (emailLower.startsWith("info@")) return 0;
-    if (emailLower.startsWith("support@")) return 1;
-    return 2;
-  }
-
-  function sortAndUnique(arr) {
-    const uniq = Array.from(new Set((arr || []).map(e => (typeof e === "string" ? e.toLowerCase().trim() : e))));
-    uniq.sort((a, b) => {
-      const pa = priorityScore(a);
-      const pb = priorityScore(b);
-      if (pa !== pb) return pa - pb;
-      return a.localeCompare(b);
-    });
-    return uniq;
-  }
-
-  function showSearching() {
-    listEl.innerHTML = "";
-    const info = document.createElement("div");
-    info.style.padding = "8px";
-    info.style.color = "#374151";
-    info.textContent = "Search emails";
-    listEl.appendChild(info);
-  }
-
-  function showNoFound() {
-    listEl.innerHTML = "";
-    const info = document.createElement("div");
-    info.style.padding = "8px";
-    info.style.color = "#6b7280";
-    info.textContent = "No emails found on this page.";
-    listEl.appendChild(info);
-  }
-
-  function renderList(emails) {
-    listEl.innerHTML = "";
-    if (!emails || emails.length === 0) {
-      showNoFound();
+  async function copyText(value) {
+    if (!value) {
       return;
     }
 
-    emails.forEach(email => {
-      const row = document.createElement("div");
-      row.className = "email-row";
-
-      const txt = document.createElement("div");
-      txt.className = "email-text";
-      txt.textContent = email;
-
-      const btns = document.createElement("div");
-      btns.style.display = "flex";
-      btns.style.gap = "6px";
-
-      const copy = document.createElement("button");
-      copy.className = "btn";
-      copy.textContent = "Copy";
-      copy.onclick = () => copyText(email);
-
-      const mailto = document.createElement("button");
-      mailto.className = "btn";
-      mailto.textContent = "Mail";
-      mailto.onclick = () => {
-        window.open(`mailto:${email}`);
-      };
-
-      btns.appendChild(copy);
-      btns.appendChild(mailto);
-
-      row.appendChild(txt);
-      row.appendChild(btns);
-      listEl.appendChild(row);
-    });
-  }
-
-  function copyText(s) {
-    if (!navigator.clipboard) {
-      const ta = document.createElement("textarea");
-      ta.value = s;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-      } catch (e) {}
-      ta.remove();
-      return;
-    }
-    navigator.clipboard.writeText(s).catch(() => {});
-  }
-
-  async function injectScanner() {
-    if (!tabId) return;
-    showSearching();
     try {
-      try {
-        await chrome.tabs.sendMessage(tabId, { action: "stopScanning" }).catch(() => {});
-      } catch (e) {}
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["content.js"]
-      });
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+    } catch {
+      // fall through to execCommand fallback
+    }
 
-      setTimeout(() => {
-        if (listEl.textContent && listEl.textContent.trim() === "Search emails") {
-          showNoFound();
-        }
-      }, 8000);
-    } catch (err) {
-      console.error("Failed to execute content script:", err);
-      setTimeout(() => {
-        if (listEl.textContent && listEl.textContent.trim() === "Search emails") {
-          showNoFound();
-        }
-      }, 700);
+    const textArea = document.createElement("textarea");
+    textArea.value = value;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    textArea.remove();
+  }
+
+  function render() {
+    if (state.loading) {
+      globalThis.PopupRender.renderStatus(listElement, "Searching emails...", "status status-loading");
+      return;
+    }
+
+    globalThis.PopupRender.renderEmailList(listElement, state.emails, copyText);
+  }
+
+  async function getActiveTab() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs?.[0] || null;
+  }
+
+  async function requestStop(tabId) {
+    if (!tabId) {
+      return;
+    }
+
+    await chrome.tabs.sendMessage(tabId, { action: "stopScanning" }).catch(() => undefined);
+  }
+
+  async function injectScanner(tabId) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["shared/email-utils.js", "content/scanner.js", "content.js"]
+    });
+  }
+
+  async function runScan() {
+    if (!state.activeTabId) {
+      globalThis.PopupState.setLoading(state, false);
+      globalThis.PopupState.setEmails(state, []);
+      render();
+      return;
+    }
+
+    globalThis.PopupState.setLoading(state, true);
+    render();
+
+    try {
+      await requestStop(state.activeTabId);
+      await injectScanner(state.activeTabId);
+    } catch {
+      globalThis.PopupState.setLoading(state, false);
+      globalThis.PopupState.setEmails(state, []);
+      render();
     }
   }
 
-  injectScanner();
-
-  chrome.runtime.onMessage.addListener((msg, sender) => {
-    if (msg?.action === "saveEmailsForTab") {
-      if (sender.tab && sender.tab.id !== tabId) return;
-      const emails = sortAndUnique(msg.emails || []);
-      if (msg.done) {
-        if (!emails || emails.length === 0) showNoFound();
-        else renderList(emails);
-      } else {
-        if (!emails || emails.length === 0) {
-          showSearching();
-        } else {
-          renderList(emails);
-        }
-      }
+  const onMessage = (message, sender) => {
+    if (message?.action !== "saveEmailsForTab") {
+      return;
     }
-  });
 
-  refreshBtn.onclick = async () => {
-    await injectScanner();
+    if (sender.tab?.id && sender.tab.id !== state.activeTabId) {
+      return;
+    }
+
+    globalThis.PopupState.setEmails(state, message.emails || []);
+    globalThis.PopupState.setLoading(state, !message.done);
+    render();
   };
+
+  chrome.runtime.onMessage.addListener(onMessage);
+
+  const activeTab = await getActiveTab();
+  globalThis.PopupState.setActiveTabId(state, activeTab?.id);
+
+  titleElement.textContent = activeTab?.title || "Email Finder";
+  metaElement.textContent = activeTab?.url || "No active tab";
+
+  refreshButton.addEventListener("click", runScan);
+
   window.addEventListener("unload", () => {
-    try {
-      if (tabId) {
-        chrome.tabs.sendMessage(tabId, { action: "stopScanning" }, () => {});
-      }
-    } catch (e) {}
+    chrome.runtime.onMessage.removeListener(onMessage);
+    if (state.activeTabId) {
+      chrome.tabs.sendMessage(state.activeTabId, { action: "stopScanning" }, () => {
+        void chrome.runtime.lastError;
+      });
+    }
   });
+
+  await runScan();
 });
