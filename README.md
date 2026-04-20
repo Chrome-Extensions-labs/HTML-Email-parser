@@ -6,7 +6,7 @@
 [![Chrome Portfolio](https://img.shields.io/badge/Chrome_Web_Store-Portfolio-34A853?style=for-the-badge&logo=google-chrome&logoColor=white)](https://ostinua.github.io/Chrome-Web-Store_Developer-List/)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-1f6feb?style=for-the-badge)](manifest.json)
-[![Version](https://img.shields.io/badge/Version-1.0.11-f59e0b?style=for-the-badge)](manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.1.1-f59e0b?style=for-the-badge)](manifest.json)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
 HTML Email Parser is a lightweight browser automation utility for lead generation, sales operations, and business development workflows. The extension scans the active tab for contact information, normalizes obfuscated email patterns, and falls back to common contact-related routes such as `/contact`, `/about`, and `/support` when the landing page does not expose a visible mailbox.
