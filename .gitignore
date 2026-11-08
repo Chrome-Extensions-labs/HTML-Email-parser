@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+*.py[cod]
+dist/
+*.zip
+coverage/
+.eslintcache
+.DS_Store

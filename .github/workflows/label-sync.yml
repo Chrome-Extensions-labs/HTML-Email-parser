@@ -2,27 +2,37 @@ name: Label Sync
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '.github/labels.yml'
   workflow_dispatch:
 
-permissions: read-all
+permissions: {}
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       issues: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Sync labels
-        uses: EndBug/add-and-update-labels@v1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: .github/labels.yml
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r requirements-dev.txt
+
+      - name: Synchronise labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: python -m scripts.sync_labels

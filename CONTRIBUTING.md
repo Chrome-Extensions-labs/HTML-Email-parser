@@ -1,42 +1,49 @@
-[![CONTRIBUTING](https://github.com/OstinUA/Promt-AI-Helper/blob/main/Additional%20files/Image/CONTRIBUTING.svg)](https://github.com/OstinUA)
+# Contributing
 
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-3e80ed?style=for-the-badge&logo=github&logoColor=white)](https://github.com/OstinUA)
-[![Open Source](https://img.shields.io/badge/Open_Source-Yes-brightgreen?style=for-the-badge&logo=open-source&logoColor=white)](https://github.com/OstinUA)
-[![Views](https://img.shields.io/badge/Profile_Views-%31&#56;%33-blueviolet?style=for-the-badge)](https://github.com/OstinUA)
-[![OstinUA](https://capsule-render.vercel.app/api?type=rect&color=3e80ed&height=2&)](https://github.com/OstinUA)
+Thank you for taking an interest in the project. Bug reports, extraction edge cases, documentation fixes and focused pull requests are all welcome.
 
-Hello! Thank you for your interest in contributing to this project. I am always open to any help, whether it's fixing bugs, adding new features, improving documentation, or just sharing fresh ideas. 
+## Setup
 
-This document is not a strict set of rules, but a simple guide on how we can comfortably and productively work together. I am very friendly and will be incredibly glad for absolutely any help!
+The extension itself needs no build step. To work on the code and run the checks:
 
-## ⬢ How You Can Help
+```bash
+git clone https://github.com/Chrome-Extensions-labs/HTML-Email-parser.git
+cd HTML-Email-parser
+npm ci
+npm run check
+```
 
-- **Have a cool idea?** You can create an Issue to discuss it first, or just jump straight in and open a Pull Request! Do whatever is more comfortable for you. We can always figure out the details together to make the project better.
-- **Found a bug?** Open an Issue and briefly describe what went wrong, or just fix it right away and send a PR.
-- **Ready to write code?** Feel free to fork the repository and open a Pull Request immediately. I will review it, help out if needed, and take care of the rest.
-- **Improving documentation.** Fixing typos, expanding instructions, or translating — absolutely any help is highly valuable.
+Node.js 22 and Python 3.11 are required for the development tooling only. Load the repository root as an unpacked extension from `chrome://extensions` to test changes in a browser.
 
-## ⬢ Pull Request Process
+## Code conventions
 
-The workflow here is as straightforward as possible:
+- Extension files are classic scripts loaded without a bundler. Keep them free of imports, build-time syntax and new runtime dependencies.
+- Each script is wrapped in an IIFE with `"use strict"` and exposes a single frozen namespace on `globalThis`; the CommonJS footer exists only so Node tests can import the module.
+- `shared/email-utils.js` must stay DOM-free. Entity decoding and validation are pure functions, which keeps them fast and testable.
+- Use `textContent` and `dataset` for dynamic values. Never build markup from page-derived strings.
+- Keep regex quantifiers bounded and cap any input whose size is controlled by a web page.
+- Comments and documentation are written in professional English and explain intent or constraints rather than restating the code.
+- Runtime limits belong in `shared/config.js`; do not duplicate magic numbers across the popup and the scanner.
 
-1. Fork this repository.
-2. Create a new branch for your changes (`git checkout -b feature/my-awesome-idea` or `git checkout -b bugfix/issue-123`).
-3. Make your changes and commit them (`git commit -m "Add new awesome feature"`).
-4. Push the changes to your fork (`git push origin feature/my-awesome-idea`).
-5. Open a Pull Request to this repository.
+## Tests
 
-## ⬢ A Few Simple Requests
+Add a unit test whenever extraction rules, state transitions or scanner behaviour change:
 
-- Try to stick to the code style already used in the project.
-- Make your commit messages clear so it's easy to understand what changed.
-- If your Pull Request resolves a specific Issue, mention its number in the description (e.g., `Closes #42`).
-- If the logic changes, please update the relevant section in the README.
+- JavaScript tests live in `tests/*.test.js` and use `node:test`.
+- Python helper tests live in `tests/test_*.py` and use `unittest`.
+- Run `npm run check` before opening a pull request. The CI runs the same command.
 
-## ⬢ Feedback
+For scanner changes, also verify manually on a page with a visible address, an obfuscated address, a `mailto:` link and a site whose contact information is only available on a secondary route.
 
-I try to review all Issues and Pull Requests as quickly as possible. Don't worry if your code isn't perfect — I'll review it, suggest tweaks, and help merge it. If I haven't replied in a while, don't hesitate to ping me in the comments.
+## Permissions and privacy
 
-The main rule is mutual respect. Welcome, and thank you for your contribution!
+The extension deliberately has no `host_permissions`. Any change that adds a permission, a new network destination, cookie-bearing requests or persistent storage needs an explicit justification in the pull request description. Contact-page probing must remain same-origin, unauthenticated and bounded.
 
-[![OstinUA](https://capsule-render.vercel.app/api?type=rect&color=3e80ed&height=2&)](https://github.com/OstinUA)
+## Pull requests
+
+1. Fork the repository and create a topic branch.
+2. Make the change with tests and, for user-visible changes, update `README.md` and `manifest.json`.
+3. Run `npm run check` and a manual browser smoke test.
+4. Open a pull request and complete the checklist in the template.
+
+Small, reviewable changes are merged faster than broad rewrites. If you are unsure about an approach, open an issue first so we can agree on the design before code is written.

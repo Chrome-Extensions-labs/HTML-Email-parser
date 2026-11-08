@@ -2,12 +2,11 @@ name: Llama Auto-Issue Generator
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
     types: [opened, synchronize, labeled]
 
-permissions: read-all
+permissions: {}
 
 concurrency:
   group: ai-issue-${{ github.ref }}
@@ -15,6 +14,9 @@ concurrency:
 
 jobs:
   analyze_code:
+    # Only same-repository pull requests receive secrets. Fork PRs are skipped
+    # instead of running with an empty model token.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -23,21 +25,38 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - name: Checkout trusted revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0
+          # The diff is read through the GitHub API, so pull request code is
+          # never checked out or executed in a job that holds secrets.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify trusted analysis assets
+        id: assets
+        # The base revision predates the scripts/ package on the pull request
+        # that introduces it. Skip instead of executing anything unavailable.
+        run: |
+          if [ -f requirements-dev.txt ] && [ -f scripts/trigger_action.py ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Analysis tooling is not present on the base revision yet. Skipping."
+          fi
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        if: steps.assets.outputs.available == 'true'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install --no-cache-dir PyGithub==2.5.0 requests==2.32.3
+        if: steps.assets.outputs.available == 'true'
+        run: pip install --no-cache-dir -r requirements-dev.txt
 
-      - name: Run AI Analysis
+      - name: Run analysis
+        if: steps.assets.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -46,4 +65,4 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
           ALLOWED_USER: ${{ secrets.ALLOWED_USER }}
-        run: python "trigger action/trigger_action.py"
+        run: python -m scripts.trigger_action

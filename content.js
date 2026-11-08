@@ -1,83 +1,121 @@
+/**
+ * Content-script entry point.
+ *
+ * Injection may happen several times for the same tab (popup refresh, repeated
+ * clicks). The newest runner supersedes the previous one instead of being
+ * dropped by a boolean guard, so every popup invocation always produces a
+ * result message.
+ */
 (() => {
-  if (globalThis.__emailParserRunner?.active) {
-    return;
+  "use strict";
+
+  const RUNNER_KEY = "__emailParserRunner";
+  const TOKEN_KEY = "__emailParserRunToken";
+
+  const previous = globalThis[RUNNER_KEY];
+  if (previous && typeof previous.stop === "function") {
+    previous.stop();
   }
 
-  const runnerState = {
-    active: true,
-    scanner: null,
-    timeoutId: null,
-    cleanup: null
-  };
-  globalThis.__emailParserRunner = runnerState;
+  const scanId = globalThis[TOKEN_KEY] || `local-${Date.now()}`;
+  delete globalThis[TOKEN_KEY];
 
-  const hardStopTimeoutMs = 21000;
-
-  function failSafeSendEmpty() {
+  function sendEmptyResult() {
     try {
-      chrome.runtime.sendMessage({ action: "saveEmailsForTab", emails: [], done: true }, () => {
-        void chrome.runtime.lastError;
-      });
+      chrome.runtime.sendMessage(
+        { action: "saveEmailsForTab", scanId, emails: [], done: true, status: "error" },
+        () => undefined // Consumes runtime.lastError when the popup is closed.
+      );
     } catch {
-      // ignored intentionally
+      // The extension context may already be invalidated after navigation.
     }
   }
 
-  function cleanupRunner() {
-    if (runnerState.timeoutId) {
-      clearTimeout(runnerState.timeoutId);
-    }
+  function createRunner() {
+    let scanner = null;
+    let timeoutId = null;
+    let stopped = false;
+    let messageListener = null;
 
-    if (runnerState.cleanup) {
-      runnerState.cleanup();
-    }
+    const runner = {
+      scanId,
+      stop
+    };
 
-    runnerState.active = false;
-    delete globalThis.__emailParserRunner;
-  }
-
-  function handleStopRequest(message, sender, sendResponse) {
-    if (message?.action !== "stopScanning") {
-      return;
-    }
-
-    runnerState.scanner?.requestStop();
-    sendResponse?.({ ok: true });
-  }
-
-  async function run() {
-    try {
-      if (!globalThis.EmailParserUtils || !globalThis.EmailScannerFactory) {
-        failSafeSendEmpty();
-        cleanupRunner();
+    function stop() {
+      if (stopped) {
         return;
       }
+      stopped = true;
 
-      const scanner = globalThis.EmailScannerFactory.createEmailScanner({
-        utils: globalThis.EmailParserUtils,
-        runtime: chrome.runtime,
-        location: window.location,
-        document,
-        domParser: new DOMParser()
-      });
-
-      runnerState.scanner = scanner;
-      chrome.runtime.onMessage.addListener(handleStopRequest);
-      runnerState.cleanup = () => chrome.runtime.onMessage.removeListener(handleStopRequest);
-
-      runnerState.timeoutId = setTimeout(() => {
-        if (runnerState.active) {
-          scanner.requestStop();
-        }
-      }, hardStopTimeoutMs);
-
-      await scanner.execute();
-    } catch {
-      failSafeSendEmpty();
-    } finally {
-      cleanupRunner();
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (messageListener) {
+        chrome.runtime.onMessage.removeListener(messageListener);
+        messageListener = null;
+      }
+      if (scanner) {
+        scanner.requestStop();
+      }
+      if (globalThis[RUNNER_KEY] === runner) {
+        delete globalThis[RUNNER_KEY];
+      }
     }
+
+    function handleStopRequest(message, sender) {
+      if (message?.action !== "stopScanning") {
+        return;
+      }
+      // Runtime messages cannot cross extension boundaries, but the sender id
+      // is still checked as a defensive guard. Do not gate on sender.tab:
+      // Chrome populates it inconsistently across Chrome versions.
+      if (sender?.id && sender.id !== chrome.runtime.id) {
+        return;
+      }
+      stop();
+    }
+
+    async function start() {
+      try {
+        const { EmailParserUtils, EmailScannerFactory, EmailParserConfig } = globalThis;
+        if (!EmailParserUtils || !EmailScannerFactory || !EmailParserConfig) {
+          sendEmptyResult();
+          return;
+        }
+
+        scanner = EmailScannerFactory.createEmailScanner({
+          utils: EmailParserUtils,
+          runtime: chrome.runtime,
+          location: window.location,
+          document,
+          domParser: new DOMParser(),
+          scanId,
+          config: EmailParserConfig
+        });
+
+        messageListener = handleStopRequest;
+        chrome.runtime.onMessage.addListener(messageListener);
+
+        // The scanner enforces its own deadline; this timer is a safety net for
+        // a rejected promise or a fetch implementation that ignores abort.
+        timeoutId = setTimeout(stop, EmailParserConfig.MAX_SCAN_DURATION_MS + 1_000);
+
+        await scanner.execute();
+      } catch {
+        if (!scanner) {
+          sendEmptyResult();
+        }
+      } finally {
+        stop();
+      }
+    }
+
+    return { start, stop, scanId };
   }
 
-  run();
+  const runner = createRunner();
+  globalThis[RUNNER_KEY] = runner;
+  runner.start();
 })();

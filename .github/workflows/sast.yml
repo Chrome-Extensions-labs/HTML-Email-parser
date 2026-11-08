@@ -1,20 +1,23 @@
 name: SAST CodeQL Scan
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:
     - cron: '17 4 * * 1'
 
-permissions: read-all
-
-concurrency:
-  group: codeql-${{ github.ref }}-${{ matrix.language }}
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
   codeql:
     name: Analyze (${{ matrix.language }})
+    # Job-level concurrency is required here: workflow-level concurrency only
+    # accepts github, inputs and vars, not the matrix context.
+    concurrency:
+      group: codeql-${{ github.ref }}-${{ matrix.language }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -31,18 +34,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+        uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:${{ matrix.language }}

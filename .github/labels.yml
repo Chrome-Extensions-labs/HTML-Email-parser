@@ -56,6 +56,19 @@
   color: "0366D6"
   description: "Dependency update (Dependabot or manual)"
 
+# Ecosystem labels — used by Dependabot
+- name: "python"
+  color: "3572A5"
+  description: "Python tooling and maintenance scripts"
+
+- name: "javascript"
+  color: "F1E05A"
+  description: "JavaScript extension code and tests"
+
+- name: "actions"
+  color: "2088FF"
+  description: "GitHub Actions workflow changes"
+
 # Workflow labels
 - name: "ai-generated"
   color: "6F42C1"

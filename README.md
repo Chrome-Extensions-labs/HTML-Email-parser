@@ -1,375 +1,163 @@
 # HTML Email Parser
 
-> Extract business contact emails from live websites with a Chrome Extension that performs deep DOM scanning, de-obfuscation, and background contact-page discovery.
+> A Manifest V3 Chrome extension that extracts business email addresses from the active tab and, when needed, from public contact pages on the same origin.
 
 [![Chrome Store](https://img.shields.io/badge/platform-Chrome_Extension-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white)](https://chromewebstore.google.com/search/OstinUA)
-[![Chrome Portfolio](https://img.shields.io/badge/Chrome_Web_Store-Portfolio-34A853?style=for-the-badge&logo=google-chrome&logoColor=white)](https://devs-in-exile.pages.dev/extensions)
-
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-1f6feb?style=for-the-badge)](manifest.json)
-[![Version](https://img.shields.io/badge/Version-1.1.1-f59e0b?style=for-the-badge)](manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.2.0-f59e0b?style=for-the-badge)](manifest.json)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
-HTML Email Parser is a lightweight browser automation utility for lead generation, sales operations, and business development workflows. The extension scans the active tab for contact information, normalizes obfuscated email patterns, and falls back to common contact-related routes such as `/contact`, `/about`, and `/support` when the landing page does not expose a visible mailbox.
+The extension runs entirely in the browser. It performs two linear passes over the DOM, normalises obfuscated addresses without creating DOM nodes, and only falls back to a small, bounded set of same-origin contact routes when the current page does not expose enough results.
 
-> [!IMPORTANT]
-> This repository contains a Chrome Extension, not a general-purpose logging library. The documentation below reflects the actual implementation shipped in this codebase.
-
-## Table of Contents
+## Contents
 
 - [Features](#features)
-- [Tech Stack & Architecture](#tech-stack--architecture)
-  - [Core Technologies](#core-technologies)
-  - [Project Structure](#project-structure)
-  - [Key Design Decisions](#key-design-decisions)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Testing](#testing)
-- [Deployment](#deployment)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
 - [Usage](#usage)
 - [Configuration](#configuration)
-  - [Manifest Permissions](#manifest-permissions)
-  - [Runtime Controls](#runtime-controls)
-  - [Scanning Strategy](#scanning-strategy)
-- [License](#license)
-- [Contacts & Community Support](#contacts--community-support)
+- [Security model](#security-model)
+- [Development and testing](#development-and-testing)
+- [Packaging and release](#packaging-and-release)
+- [License and support](#license-and-support)
 
 ## Features
 
-- Deep client-side email extraction from visible text nodes and rendered DOM content.
-- Attribute-aware scanning for `href`, `title`, `placeholder`, `alt`, `aria-label`, `data-email`, `data-contact`, `src`, and `srcset` values.
-- `mailto:` URL cleanup, query-string stripping, and result normalization before presentation.
-- De-obfuscation of common anti-scraping formats such as `name [at] domain [dot] com`, `name (at) domain (dot) com`, and Unicode full-width separators.
-- Cloudflare `data-cfemail` decoding to recover addresses protected by email obfuscation.
-- Reverse-string detection for mailboxes embedded as reversed text blobs.
-- Concatenated string recovery for email addresses split across JavaScript-style quoted fragments.
-- False-positive suppression for image assets, hashed strings, noisy telemetry artifacts, and bundled resource names.
-- Business-oriented result prioritization that promotes high-value inboxes such as `ads@`, `marketing@`, `sales@`, `contact@`, `info@`, and `support@`.
-- Background augmentation that fetches common contact-oriented routes from the current origin without opening extra tabs.
-- Root-page aware fallback behavior that expands scanning when the current page is likely a homepage or no email is discovered locally.
-- Time-bounded execution model with a hard stop to reduce the risk of runaway scans on large or hostile pages.
-- Popup-driven UX with email listing, clipboard copy, `mailto:` launch, and manual refresh controls.
-- Manifest V3-compatible packaging with a service worker background script.
-- Zero build-step local development workflow: clone, load unpacked, and test immediately in Chrome.
+- Extraction from text nodes and element attributes, including `mailto:` links, `src`, `srcset`, `aria-label`, `content` and all `data-*` attributes.
+- Cloudflare `data-cfemail` decoding with strict payload validation.
+- Recovery of bracketed and spelled-out obfuscation (`name [at] domain [dot] com`) and JavaScript string concatenation.
+- HTML entity, percent-encoding and full-width Unicode separator normalisation.
+- Conservative mailbox validation that rejects image assets, bundle artefacts, hashed identifiers and `www.` hosts.
+- Business-oriented ordering that promotes addresses such as `ads@`, `sales@`, `contact@` and `support@`.
+- Contact-page augmentation that prefers links discovered on the page, then a short curated path list; requests are concurrent, unauthenticated, size-limited and same-origin only.
+- Progressive results: on-page findings appear immediately while contact pages are still being checked.
+- Popup with a per-tab session cache, result summary, copy-one / copy-all actions, `mailto:` links, keyboard focus styles, dark mode and an explicit error state.
+- No build step for the extension itself: clone the repository and load it unpacked.
 
-## Tech Stack & Architecture
-
-### Core Technologies
-
-- JavaScript (plain ES2019+ style browser scripting).
-- Chrome Extension Manifest V3 APIs.
-- DOM traversal via `TreeWalker`, `querySelectorAll`, and `DOMParser`.
-- Browser `fetch()` for same-origin background HTML retrieval.
-- Static HTML and CSS for popup rendering.
-- Apache License 2.0 for open-source distribution.
-
-### Project Structure
+## Architecture
 
 ```text
-HTML-Email-parser/
-├── LICENSE
-├── README.md
-├── background.js
-├── content.js
-├── manifest.json
-├── popup.html
-├── popup.js
-├── styles.css
-└── icons/
-    └── icon128.png
+manifest.json            Permissions, popup and icon declarations.
+popup.html               Static popup shell.
+styles.css               Popup styling, including dark mode and reduced motion.
+popup.js                 Orchestration: tab lookup, injection, messaging, watchdog.
+popup/state.js           Validated state transitions.
+popup/render.js          DOM rendering and clipboard feedback.
+popup/cache.js           Per-tab results in chrome.storage.session.
+content.js               Idempotent injection runner and stop handling.
+content/scanner.js       Two-pass DOM scan and bounded contact-page augmentation.
+shared/config.js         Runtime limits shared by the popup and content scripts.
+shared/email-utils.js    Pure, DOM-free parsing and validation helpers.
+scripts/                 Validation, packaging and CI maintenance scripts.
+tests/                   Node and Python unit tests.
 ```
-
-### Key Design Decisions
-
-#### 1. Content-Script-First Extraction
-
-The extension injects `content.js` into the active tab, keeping extraction logic close to the live DOM. This makes it possible to inspect text nodes, attributes, and rendered page content without requiring external services.
-
-#### 2. Background Contact-Page Augmentation
-
-If the page yields too few results, the scanner requests additional HTML from common contact routes on the same origin. This improves recall for sites that keep inboxes off the homepage.
-
-> [!NOTE]
-> Contact-page augmentation only targets same-origin candidate paths already defined in the extension source. It does not crawl arbitrary domains.
-
-#### 3. Defensive Normalization Pipeline
-
-The extraction logic uses layered normalization steps to maximize signal quality:
-
-1. Decode HTML entities.
-2. Normalize Unicode separators and invisible characters.
-3. Translate obfuscated `at` and `dot` patterns.
-4. Remove `mailto:` prefixes and trailing query strings.
-5. Filter out image-like and garbage-like false positives.
-6. Score and sort business-relevant addresses.
-
-#### 4. Bounded Runtime
-
-A runtime ceiling prevents the scanner from consuming unbounded page resources. This is especially useful on very large documents, SPAs, or pages with deeply nested markup.
-
-> [!WARNING]
-> The scanner intentionally caps results and runtime. If you need exhaustive bulk extraction, you may need to tune the constants in `content.js` and validate performance on representative sites.
-
-#### 5. Thin Background Worker
-
-`background.js` is intentionally minimal because the extension primarily relies on popup and content-script messaging. This keeps the service worker easy to audit and compatible with Chrome's MV3 lifecycle model.
-
-#### Data Flow Overview
-
-```mermaid
-flowchart TD
-    A[User opens extension popup] --> B[popup.js queries active tab]
-    B --> C[popup.js injects content.js]
-    C --> D[Scan current DOM and attributes]
-    D --> E{Enough emails found?}
-    E -- Yes --> F[Normalize sort and send results]
-    E -- No --> G[Fetch same-origin contact paths]
-    G --> H[Parse fetched HTML with DOMParser]
-    H --> F
-    F --> I[chrome.runtime.sendMessage]
-    I --> J[popup.js renders prioritized list]
-    J --> K[User copies email or opens mailto]
-```
-
-#### High-Level Component Responsibilities
 
 | Component | Responsibility |
 | --- | --- |
-| `manifest.json` | Declares permissions, popup entrypoint, icons, and background worker. |
-| `content.js` | Performs extraction, de-obfuscation, fallback fetching, sorting, and messaging. |
-| `popup.js` | Injects the scanner, renders results, and exposes copy / mail actions. |
-| `popup.html` | Defines popup layout and static UI shell. |
-| `styles.css` | Styles the popup list, buttons, metadata, and responsive behavior. |
-| `background.js` | Maintains a minimal MV3 service worker message responder. |
+| `popup.js` | Resolves the active tab, injects the bundle with a per-run token, validates incoming messages and owns the UI watchdog. |
+| `content.js` | Supersedes any previous runner in the tab, enforces a hard deadline and cleans up its listener. |
+| `content/scanner.js` | Walks text nodes once and element attributes once; probes contact pages within a strict budget. |
+| `shared/email-utils.js` | Pure extraction, validation and prioritisation; has no browser dependency and is unit tested in Node. |
 
-## Getting Started
+There is no background service worker: the popup and content scripts communicate directly, so no always-running extension page is needed.
 
-### Prerequisites
-
-Before loading the extension, ensure you have the following:
-
-- Google Chrome or another Chromium-based browser with Manifest V3 support.
-- Access to `chrome://extensions` in developer mode.
-- Git, if you plan to clone the repository instead of downloading a ZIP archive.
-- No Node.js, Python, Docker, or package manager installation is required for the current codebase.
-
-### Installation
-
-#### Option 1: Clone the Repository
-
-```bash
-git clone https://github.com/<your-account>/HTML-Email-parser.git
-cd HTML-Email-parser
+```mermaid
+flowchart TD
+  A[Open popup] --> B[Restore cached result for this tab]
+  B --> C[Inject config, utils, scanner and runner]
+  C --> D[Walk text nodes and attributes]
+  D --> E{Eight addresses found?}
+  E -- No --> F[Probe bounded same-origin contact URLs]
+  E -- Yes --> G[Publish sorted results]
+  D --> H[Publish partial results immediately]
+  F --> G
+  H --> F
+  G --> I[Render list, status and actions]
 ```
 
-#### Option 2: Load as an Unpacked Extension
+## Getting started
 
-1. Open Chrome and navigate to `chrome://extensions`.
-2. Enable `Developer mode`.
-3. Click `Load unpacked`.
-4. Select the repository root containing `manifest.json`.
-5. Confirm that the extension appears in the extension list with version `1.0.11`.
+### Requirements
 
-> [!TIP]
-> Pin the extension to the browser toolbar while testing. It makes iterative scans and manual refreshes much faster.
+- Chrome 116 or newer, or another Chromium browser with Manifest V3 support.
+- For development tooling only: Node.js 22, Python 3.11 and npm.
 
-## Testing
+### Load unpacked
 
-This repository does not currently include an automated unit test suite, integration harness, or linter configuration. Validation is primarily manual and browser-based.
+1. Clone the repository.
+2. Open `chrome://extensions` and enable **Developer mode**.
+3. Choose **Load unpacked** and select the directory containing `manifest.json`.
+4. Pin the extension to the toolbar for quick access.
 
-### Recommended Manual Validation
-
-1. Load the unpacked extension in Chrome.
-2. Visit a page that exposes a visible email address.
-3. Open the popup and confirm the address appears in the list.
-4. Visit a site whose homepage does not show email addresses but whose `/contact` or `/about` route does.
-5. Use the popup refresh button to verify fallback retrieval still returns results.
-6. Test an obfuscated address format such as `hello [at] company [dot] com`.
-7. Validate that `Copy` writes to the clipboard and `Mail` opens the system mail client.
-
-### Repository-Level Checks
-
-Use the following commands to validate the static project files locally:
-
-```bash
-python -m json.tool manifest.json
-```
-
-```bash
-git diff -- README.md manifest.json popup.html popup.js content.js background.js styles.css
-```
-
-> [!NOTE]
-> If you plan to expand this project, adding an end-to-end Playwright or Puppeteer test harness would provide stronger regression protection for popup messaging and content-script behavior.
-
-## Deployment
-
-Because this project is a browser extension, deployment typically means packaging and distributing the extension rather than deploying a long-running server process.
-
-### Production Packaging
-
-1. Verify the extension version in `manifest.json`.
-2. Confirm icons, popup assets, and scripts are present at the repository root.
-3. Run a final manual smoke test in Chrome.
-4. Create a ZIP archive of the extension contents for release distribution.
-
-Example packaging command:
-
-```bash
-zip -r html-email-parser.zip manifest.json background.js content.js popup.html popup.js styles.css icons LICENSE README.md
-```
-
-### Chrome Web Store Readiness Checklist
-
-- Increment the version before each published release.
-- Review requested permissions and remove anything unnecessary.
-- Confirm all strings shown to end users are production-ready.
-- Re-test on representative target sites, especially sites that use obfuscated or dynamically rendered contact information.
-
-### CI/CD Guidance
-
-The repository does not currently include a CI workflow. If you introduce one, a pragmatic pipeline would include:
-
-- JSON validation for `manifest.json`.
-- Static syntax checks for JavaScript files.
-- Optional browser-based smoke tests for popup injection and result rendering.
-- Artifact packaging for release candidates.
-
-> [!CAUTION]
-> Chrome Extension releases are sensitive to permission changes. Any additional host permissions or API access may require renewed user trust and store review scrutiny.
+No bundler, transpiler or package installation is required to run the extension.
 
 ## Usage
 
-### Basic End-User Flow
+1. Open the site you want to inspect.
+2. Click the extension icon. A cached result for this tab appears immediately while a fresh scan runs.
+3. Use **Copy** for one address, **Copy all** for a newline-separated list, or **Mail** to open a `mailto:` link.
+4. Click **Refresh** to force a new scan. Chrome blocks injection on `chrome://`, store and other restricted pages; the popup reports this explicitly.
 
-1. Open a target website in Chrome.
-2. Click the extension icon.
-3. Wait for the scan to complete.
-4. Review the discovered emails in the popup.
-5. Click `Copy` to copy an address or `Mail` to open a `mailto:` link.
-6. Click `Refresh` if you want to force a fresh scan.
-
-### What the Popup Does Internally
-
-```javascript
-// popup.js
-// Query the active tab, inject the content script, and render results
-const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-await chrome.scripting.executeScript({
-  target: { tabId: tab.id },
-  files: ["content.js"]
-});
-
-chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg?.action === "saveEmailsForTab") {
-    renderList(msg.emails || []);
-  }
-});
-```
-
-The popup acts as the UI orchestrator. It resolves the active tab, injects the scanner, listens for `saveEmailsForTab` messages, and refreshes the rendered email list when new results arrive.
-
-### Core Scanning Pattern
-
-```javascript
-// content.js
-// Extract emails from the current document, then optionally fetch contact pages
-let merged = new Set(scanCurrentDocument() || []);
-
-if (merged.size < MAX_EMAILS) {
-  const contactEmails = await fetchAndScanContactPages(window.location.origin);
-  contactEmails.forEach(email => merged.add(email));
-}
-
-sendResults(Array.from(merged), true);
-```
-
-This two-phase model keeps the local page scan fast while still giving the extension a recovery path when the homepage does not expose contact details directly.
-
-### Example Target Patterns the Extension Handles
-
-```text
-sales@example.com
-hello [at] company [dot] io
-marketing (at) startup . co
-moc.elpmaxe@ofni
-```
-
-> [!TIP]
-> For the highest-quality results, test the extension on root pages first. The fallback contact-path strategy is most effective when the current page shares the same origin as the site's public contact pages.
+The popup shows the page hostname and a live status line. Contact pages are probed only when the current page is a homepage or yields no addresses.
 
 ## Configuration
 
-The project does not currently expose a user-editable `.env` file, CLI startup flags, or a packaged configuration module. Configuration is implemented directly in the source files.
-
-### Manifest Permissions
-
-The extension requests the following capabilities:
-
-| Permission | Why it is needed |
-| --- | --- |
-| `activeTab` | Allows the extension to work against the currently focused browser tab. |
-| `scripting` | Enables runtime injection of `content.js`. |
-| `clipboardWrite` | Supports the popup copy-to-clipboard action. |
-| `tabs` | Allows popup logic to inspect the active tab title and URL. |
-| `host_permissions: <all_urls>` | Permits scanning and same-origin contact-page fetching on arbitrary websites opened by the user. |
-
-### Runtime Controls
-
-The main runtime tuning values live in `content.js`:
+Runtime limits live in `shared/config.js` and are shared by the popup watchdog and the scanner.
 
 | Constant | Default | Purpose |
 | --- | --- | --- |
-| `MAX_EMAILS` | `4` | Limits how many emails are needed before fallback behavior can stop. |
-| `MAX_RUN_MS` | `60000` | Caps total scanner runtime to approximately 60 seconds. |
-| `VERBOSE` | `window.__EMAIL_FINDER_VERBOSE` | Enables diagnostic console logging when truthy. |
+| `TARGET_RESULT_COUNT` | `8` | Stop augmentation once this many addresses are found. |
+| `MAX_RESULT_COUNT` | `50` | Hard ceiling for collected and rendered addresses. |
+| `MAX_SCAN_DURATION_MS` | `12000` | Total scan deadline. |
+| `POPUP_WATCHDOG_MS` | `16000` | Popup fallback if a scan never reports completion. |
+| `FETCH_TIMEOUT_MS` | `3500` | Per-contact-page request timeout. |
+| `MAX_CONCURRENT_FETCHES` | `3` | Size of the augmentation worker pool. |
+| `MAX_CONTACT_URLS` | `6` | Maximum number of candidate pages per scan. |
+| `MAX_TEXT_LENGTH` | `100000` | Per-fragment ceiling before regex processing. |
+| `MAX_HTML_LENGTH` | `1500000` | Maximum fetched HTML size that will be parsed. |
 
-### Scanning Strategy
+Candidate routes are discovered from same-origin links whose path mentions contact, about, support, help, team or imprint, followed by a short static list (`/contact`, `/contact-us`, `/contacts`, `/about`, `/support`, `/help`, `/impressum`, `/team`). Duplicates are removed by normalised path.
 
-The scanner combines multiple passes:
+## Security model
 
-- Text-node traversal with `TreeWalker`.
-- Element-level inspection across common text-bearing tags.
-- Attribute extraction for likely contact-bearing properties.
-- HTML entity decoding and Unicode normalization.
-- Style-block scanning for email-like fragments embedded in CSS or inline payloads.
-- Same-origin fetches against a curated contact-path allowlist.
+- **No `host_permissions`.** `activeTab` grants temporary access to the tab the user explicitly invokes the extension on. The old `<all_urls>` grant was removed.
+- **Least-privilege messaging.** The popup accepts results only from a content script in the active tab with a matching per-run token; the content script accepts stop requests only from the extension itself.
+- **No HTML injection.** All dynamic values are assigned with `textContent` or `dataset`; `innerHTML` is never used for rendering or entity decoding.
+- **Bounded untrusted input.** Regex quantifiers follow RFC 5321 limits, text and HTML lengths are capped, and every scan has a deadline.
+- **Unauthenticated probing.** Contact-page requests use `credentials: "omit"`, verify the final URL stays on the same origin, and accept only HTML responses.
+- **Validated addresses.** Characters that could be interpreted as `mailto:` URL delimiters are rejected before an address is interpolated into an `href`.
+- **Supply chain.** CI actions are pinned to commit SHAs, workflows declare explicit minimal permissions, and the analysis workflow never checks out code from a pull request while secrets are present.
 
-### Candidate Fallback Routes
+## Development and testing
 
-The current implementation attempts these paths when additional discovery is needed:
-
-```text
-/contact
-/contact/
-/contact-us
-/contact-us/
-/contacts
-/contacts/
-/about
-/about/
-/support
-/support/
-/help
-/help/
+```bash
+npm ci
+npm run check
+npm run package
 ```
 
-### UI Strings
+| Command | What it does |
+| --- | --- |
+| `npm run lint` | ESLint over classic extension scripts and ESM tooling. |
+| `npm run validate` | Checks the manifest, permission set, script tags and injected file list. |
+| `npm test` | Node unit tests for parsing, scanning, state and manifest integrity. |
+| `npm run test:python` | Python unit tests for the CI analysis helpers. |
+| `npm run check` | Runs all of the above in sequence. |
+| `npm run package` | Builds a deterministic `extension.zip`. |
 
-The popup uses the following English refresh label and helper tip:
+The scanner tests use a synthetic DOM that throws if `innerHTML` or `innerText` is read, so the linear scanning guarantee cannot regress silently.
 
-- Button label: `Refresh`
-- Footer hint: `Tip: If an email is not found right away, click "Refresh"`
+For manual validation, test a page with a visible address, an obfuscated address (`hello [at] company [dot] io`), a `mailto:` link, a Cloudflare-protected address and a site whose contact details live only on `/contact`.
 
-If you need to customize wording, update the static strings in `popup.html` and any corresponding text logic in `popup.js`.
+## Packaging and release
 
-## License
+`npm run package` writes a reproducible archive containing only runtime assets. `scripts/validate.mjs` fails the build if a script is referenced but missing, if inline scripts are introduced, or if broad host permissions are added back.
 
-This project is distributed under the Apache License 2.0. See [`LICENSE`](LICENSE) for the full legal text.
+The **Package Chrome Extension** workflow runs the same checks on manual dispatch, uploads the archive as an artifact and, only when the `publish` input is enabled, uploads a draft to the Chrome Web Store. Increment `manifest.json` and the version badge before publishing.
 
-## Contacts & Community Support
+## License and support
 
-## Support the Project
+Distributed under the Apache License 2.0. See [LICENSE](LICENSE).
 
 [![Patreon](https://img.shields.io/badge/Patreon-OstinFCT-f96854?style=flat-square&logo=patreon)](https://www.patreon.com/OstinFCT)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-fctostin-29abe0?style=flat-square&logo=ko-fi)](https://ko-fi.com/fctostin)
@@ -377,4 +165,4 @@ This project is distributed under the Apache License 2.0. See [`LICENSE`](LICENS
 [![YouTube](https://img.shields.io/badge/YouTube-FCT--Ostin-red?style=flat-square&logo=youtube)](https://www.youtube.com/@FCT-Ostin)
 [![Telegram](https://img.shields.io/badge/Telegram-FCTostin-2ca5e0?style=flat-square&logo=telegram)](https://t.me/FCTostin)
 
-If you find this tool useful, consider leaving a star on GitHub or supporting the author directly.
+If the extension is useful, consider starring the repository or supporting the author.
