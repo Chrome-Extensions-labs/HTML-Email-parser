@@ -10,13 +10,14 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: codeql-${{ github.ref }}-${{ matrix.language }}
-  cancel-in-progress: false
-
 jobs:
   codeql:
     name: Analyze (${{ matrix.language }})
+    # Job-level concurrency is required here: workflow-level concurrency only
+    # accepts github, inputs and vars, not the matrix context.
+    concurrency:
+      group: codeql-${{ github.ref }}-${{ matrix.language }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
