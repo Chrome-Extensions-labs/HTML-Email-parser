@@ -1,59 +1,46 @@
 name: Lint and Static Checks
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+permissions: {}
 
 concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
 
-permissions: read-all
-
 jobs:
-  lint:
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.head_ref }}
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
 
-      - name: Install dependencies
-        run: |
-          if [ ! -f package.json ]; then
-            echo "No package.json found. Skipping npm install."
-            exit 0
-          fi
-          if [ -f package-lock.json ]; then
-            echo "package-lock.json found. Running fast install (npm ci)..."
-            npm ci
-          else
-            echo "package-lock.json NOT found. Generating it (npm install)..."
-            npm install --no-audit --no-fund
-          fi
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
 
-      - name: Run project lint script when available
-        run: |
-          if [ -f package.json ]; then
-            npm run lint --if-present
-          else
-            echo "No package.json found. Skipping lint."
-          fi
+      - name: Install dev dependencies
+        run: npm ci
 
-      - name: Validate JavaScript syntax
-        run: |
-          if [ -d api ]; then
-            while IFS= read -r -d '' file; do
-              node --check "$file"
-            done < <(find api -type f -name '*.js' -print0)
-          else
-            echo "No api/ directory found. Skipping JavaScript syntax validation."
-          fi
+      - name: Lint, validate and test
+        run: npm run check
+
+      - name: Verify extension packaging
+        run: npm run package -- --output /tmp/extension.zip

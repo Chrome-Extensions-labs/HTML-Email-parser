@@ -1,35 +1,48 @@
 name: Feature Request
-description: Suggest an enhancement or a new feature for the LLM pipeline.
-title: "feat: [Short description of the feature]"
+description: Suggest an improvement to scanning coverage or the popup experience.
+title: "feat: [short description]"
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for suggesting an improvement! Please provide detailed context so we can understand the value of this feature.
+        Please describe the problem before the solution. This extension runs
+        entirely in the browser, so proposals that require additional permissions
+        or network endpoints need a clear justification.
 
   - type: textarea
-    id: problem-context
+    id: problem
     attributes:
-      label: Problem Context
-      description: Explain the problem your proposed enhancement solves. Is your feature request related to a specific frustration?
-      placeholder: I'm always frustrated when...
+      label: Problem context
+      description: What does the current extension fail to do for you?
+      placeholder: "On sites that hide addresses behind ..."
     validations:
       required: true
 
   - type: textarea
-    id: proposed-solution
+    id: solution
     attributes:
-      label: Proposed Solution & Use Cases
-      description: Describe your ideal solution and real-world scenarios where this feature would be beneficial.
-      placeholder: It would be great if the action could automatically...
+      label: Proposed behaviour
+      description: Describe the expected result and where it should appear in the popup.
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives Considered
-      description: Have you considered any alternative solutions or workarounds?
+      label: Alternatives considered
     validations:
       required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - Email extraction rules
+        - Popup UI / accessibility
+        - Performance and runtime limits
+        - Packaging or developer tooling
+        - Other
+    validations:
+      required: true

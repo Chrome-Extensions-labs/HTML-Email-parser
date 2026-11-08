@@ -1,23 +1,32 @@
 ## Description
-## Related Issue(s)
-Resolves #
 
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Refactoring / Technical Debt
+<!-- What changed and why. Keep it factual. -->
 
-## Testing Performed
-- [ ] Local execution of `process_event.py`
-- [ ] Verified JSON output structure from Gemini API
-- [ ] Tested GitHub Action workflow trigger (dry-run)
-- [ ] Other: 
+## Related issue(s)
+
+Closes #
+
+## Type of change
+
+- [ ] Bug fix
+- [ ] New capability within the existing scanning/UI scope
+- [ ] Refactor or performance improvement
+- [ ] Documentation or repository tooling
+- [ ] CI/CD workflow change
+- [ ] Manifest/permission change (requires an explicit justification below)
+
+## Verification
+
+- [ ] `npm run check` passes locally
+- [ ] `npm run package` produces a loadable archive
+- [ ] Loaded unpacked in Chrome and verified the popup on at least one real page
+- [ ] Added or updated tests for changed extraction/state logic
+- [ ] Re-tested obfuscated and `mailto:` patterns if `shared/email-utils.js` changed
 
 ## Checklist
-- [ ] My code follows the code style of this project (PEP-8).
-- [ ] I have performed a self-review of my own code.
-- [ ] I have commented my code, particularly in hard-to-understand areas.
-- [ ] I have made corresponding changes to the documentation (README.md, etc.).
-- [ ] My changes generate no new warnings or errors in the CI pipeline.
+
+- [ ] Comments and documentation are written in professional English
+- [ ] No new runtime dependency or extension permission was introduced without justification
+- [ ] `README.md` reflects any user-visible change
+- [ ] `manifest.json` version was bumped for a user-visible change
+- [ ] Self-reviewed the diff for unvalidated input, unbounded loops and DOM allocations
