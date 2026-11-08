@@ -33,15 +33,30 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
           persist-credentials: false
 
+      - name: Verify trusted analysis assets
+        id: assets
+        # The base revision predates the scripts/ package on the pull request
+        # that introduces it. Skip instead of executing anything unavailable.
+        run: |
+          if [ -f requirements-dev.txt ] && [ -f scripts/trigger_action.py ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Analysis tooling is not present on the base revision yet. Skipping."
+          fi
+
       - name: Set up Python
+        if: steps.assets.outputs.available == 'true'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.assets.outputs.available == 'true'
         run: pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Run analysis
+        if: steps.assets.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
